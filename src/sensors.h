@@ -10,9 +10,9 @@
 #define I2C_SDA 21
 #define I2C_SCL 22
 
-// Sensor Adressen
-#define BME280_ADDRESS 0x76  // oder 0x77
-#define MPU9250_ADDRESS 0x68
+// Sensor Adressen (umbenannt um Konflikt mit Bibliothek zu vermeiden)
+#define BME280_I2C_ADDR 0x76  // oder 0x77
+#define MPU9250_I2C_ADDR 0x68
 
 // Sensor Daten Struktur
 struct SensorData {

@@ -1,53 +1,33 @@
-
 #include <Arduino.h>
+#include <WiFi.h>        // ← HINZUFÜGEN!
+#include "config.h"
 #include "sensors.h"
-
-// Optional: Logger einbinden wenn vorhanden
-// #include "logger.h"
+#include "wifi_setup.h"
 // Globale Objekte
 Sensors sensors;
+WifiManager wifiManager;
 SensorData data;
 
-// Konfiguration
-const unsigned long SENSOR_INTERVAL = 5000;  // 5 Sekunden
+// Timing
 unsigned long lastSensorRead = 0;
-
-
+unsigned long lastTimeUpdate = 0;
 
 void setup() {
     Serial.begin(115200);
-    delay(2000);  // Warte auf Serial Monitor
-    
-
-    
-    // Optional: Logger statt Serial direkt
-    // Logger::init(LOG_DEBUG);
-    // LOG_I("MAIN", "ESP32 IoT Wetterstation gestartet");
-
-    /*
-    
-    Logger::init(LOG_VERBOSE);
-    
-    LOG_I("SETUP", "System startet...");
-    LOG_D("SETUP", "ESP32 Chip ID: %llX", ESP.getEfuseMac());
-    LOG_W("SETUP", "Dies ist eine Warnung!");
-    LOG_E("SETUP", "Dies ist ein Fehler!");
-
-    */
-
-    
-    
-    
-    
+    delay(2000);
     
     Serial.println("\n\n");
     Serial.println("╔═══════════════════════════════════════════════════════╗");
     Serial.println("║                                                       ║");
-    Serial.println("║       ESP32 IoT Wetterstation - Tag 1                ║");
-    Serial.println("║       Sensor Auslesen & Testen                       ║");
+    Serial.println("║       ESP32 IoT Wetterstation - Tag 2                ║");
+    Serial.println("║       WLAN + NTP Zeitsynchronisation                 ║");
     Serial.println("║                                                       ║");
     Serial.println("╚═══════════════════════════════════════════════════════╝");
     Serial.println();
+    
+    // LED Pin konfigurieren
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, LOW);
     
     // System Info
     Serial.println("System Informationen:");
@@ -59,15 +39,27 @@ void setup() {
     
     // Sensoren initialisieren
     if (!sensors.begin()) {
-        Serial.println("\n❌ FEHLER: Keine Sensoren gefunden!");
-        Serial.println("   Programm gestoppt. Bitte Hardware prüfen.");
-        while(1) {
-            delay(1000);  // Endlosschleife
+        Serial.println("\n❌ FEHLER: Sensor-Initialisierung fehlgeschlagen!");
+        Serial.println("   Programm läuft trotzdem weiter (nur WLAN-Test)");
+    }
+    
+    // WLAN initialisieren
+    if (!wifiManager.begin()) {
+        Serial.println("\n❌ FEHLER: WLAN-Verbindung fehlgeschlagen!");
+        Serial.println("   Prüfe config.h (SSID/Passwort)");
+        Serial.println("   Programm läuft trotzdem weiter (Offline-Modus)");
+    } else {
+        // LED blinken zur Bestätigung
+        for (int i = 0; i < 3; i++) {
+            digitalWrite(LED_PIN, HIGH);
+            delay(200);
+            digitalWrite(LED_PIN, LOW);
+            delay(200);
         }
     }
     
-    Serial.println("✅ Initialisierung erfolgreich!");
-    Serial.println("   Starte kontinuierliche Messung...\n");
+    Serial.println("\n✅ Setup abgeschlossen!");
+    Serial.println("   Starte Hauptschleife...\n");
     
     delay(2000);
 }
@@ -75,51 +67,91 @@ void setup() {
 void loop() {
     unsigned long currentMillis = millis();
     
-    // Sensor Daten alle X Sekunden auslesen
-    if (currentMillis - lastSensorRead >= SENSOR_INTERVAL) {
+    // WLAN Reconnect Logik
+    wifiManager.handleReconnect();
+    
+    // Zeit aktualisieren (alle 10 Sekunden)
+    if (currentMillis - lastTimeUpdate >= 10000) {
+        lastTimeUpdate = currentMillis;
+        wifiManager.updateTime();
+    }
+    
+    // Sensor Daten auslesen
+    if (currentMillis - lastSensorRead >= SENSOR_READ_INTERVAL_MS) {
         lastSensorRead = currentMillis;
         
-        // Alle Sensoren auslesen
+        // Status LED kurz an
+        digitalWrite(LED_PIN, HIGH);
+        
+        // Sensoren auslesen
         if (sensors.readAll(data)) {
-            sensors.printSensorData(data);
             
-            // Optional: Kompakt-Format für CSV Export
-            Serial.println("CSV: timestamp,temp,hum,press,accX,accY,accZ,gyroX,gyroY,gyroZ");
-            Serial.printf("     %lu,%.2f,%.2f,%.2f,%.3f,%.3f,%.3f,%.2f,%.2f,%.2f\n",
-                data.timestamp,
-                data.temperature, data.humidity, data.pressure,
-                data.accelX, data.accelY, data.accelZ,
-                data.gyroX, data.gyroY, data.gyroZ
-            );
-            Serial.println();
+            // Formatierte Ausgabe
+            Serial.println("╔════════════════════════════════════════════════════════╗");
+            Serial.printf ("║ Zeit: %-15s | Uptime: %10lu ms      ║\n", 
+                          wifiManager.getFormattedTime().c_str(), 
+                          currentMillis);
+            Serial.printf ("║ Epoch: %-12lu | Heap: %10d bytes    ║\n",
+                          wifiManager.getEpochTime(),
+                          ESP.getFreeHeap());
+            Serial.printf ("║ WLAN: %-10s | RSSI: %4d dBm                ║\n",
+                          wifiManager.isConnected() ? "Verbunden" : "Getrennt",
+                          WiFi.RSSI());
+            Serial.println("╠════════════════════════════════════════════════════════╣");
+            
+            // BME280 Daten
+            if (data.bme280Valid) {
+                Serial.println("║ BME280 - Umwelt-Sensor                                 ║");
+                Serial.println("╟────────────────────────────────────────────────────────╢");
+                Serial.printf ("║   🌡️  Temperatur:   %6.2f °C                        ║\n", data.temperature);
+                Serial.printf ("║   💧 Luftfeuchte:  %6.2f %%                         ║\n", data.humidity);
+                Serial.printf ("║   📊 Luftdruck:    %7.2f hPa                        ║\n", data.pressure);
+            } else {
+                Serial.println("║ BME280 - ❌ NICHT VERFÜGBAR                            ║");
+            }
+            
+            Serial.println("╠════════════════════════════════════════════════════════╣");
+            
+            // MPU9250 Daten
+            if (data.mpu9250Valid) {
+                Serial.println("║ MPU9250 - Bewegungs-Sensor                             ║");
+                Serial.println("╟────────────────────────────────────────────────────────╢");
+                Serial.println("║ Beschleunigung (g):                                    ║");
+                Serial.printf ("║   X: %+7.3f  |  Y: %+7.3f  |  Z: %+7.3f     ║\n", 
+                               data.accelX, data.accelY, data.accelZ);
+                Serial.println("╟────────────────────────────────────────────────────────╢");
+                Serial.println("║ Gyroskop (°/s):                                        ║");
+                Serial.printf ("║   X: %+8.2f | Y: %+8.2f | Z: %+8.2f    ║\n", 
+                               data.gyroX, data.gyroY, data.gyroZ);
+            } else {
+                Serial.println("║ MPU9250 - ❌ NICHT VERFÜGBAR                           ║");
+            }
+            
+            Serial.println("╚════════════════════════════════════════════════════════╝");
+            
+            // JSON Format (Vorbereitung für MQTT)
+            Serial.println("\nJSON Format (für Azure IoT Hub):");
+            Serial.println("{");
+            Serial.printf("  \"timestamp\": %lu,\n", wifiManager.getEpochTime());
+            Serial.printf("  \"temperature\": %.2f,\n", data.temperature);
+            Serial.printf("  \"humidity\": %.2f,\n", data.humidity);
+            Serial.printf("  \"pressure\": %.2f,\n", data.pressure);
+            Serial.printf("  \"accelX\": %.3f,\n", data.accelX);
+            Serial.printf("  \"accelY\": %.3f,\n", data.accelY);
+            Serial.printf("  \"accelZ\": %.3f,\n", data.accelZ);
+            Serial.printf("  \"gyroX\": %.2f,\n", data.gyroX);
+            Serial.printf("  \"gyroY\": %.2f,\n", data.gyroY);
+            Serial.printf("  \"gyroZ\": %.2f\n", data.gyroZ);
+            Serial.println("}\n");
             
         } else {
             Serial.println("⚠️  Fehler beim Auslesen der Sensoren");
         }
         
-        // Speicher-Check
-        Serial.printf("💾 Free Heap: %d bytes\n\n", ESP.getFreeHeap());
+        // LED wieder aus
+        digitalWrite(LED_PIN, LOW);
     }
     
-    // Kleine Pause für Stabilität
+    // Kleine Pause
     delay(10);
 }
-
-// Alternative: Wenn du den Logger benutzt, ersetze die Serial.prints durch:
-/*
-void setup() {
-    Logger::init(LOG_DEBUG);
-    
-    LOG_I("MAIN", "ESP32 IoT Wetterstation - Tag 1");
-    LOG_I("MAIN", "CPU: %d MHz", ESP.getCpuFreqMHz());
-    LOG_I("MAIN", "Chip ID: %llX", ESP.getEfuseMac());
-    
-    if (!sensors.begin()) {
-        LOG_E("MAIN", "Keine Sensoren gefunden!");
-        while(1) delay(1000);
-    }
-    
-    LOG_I("MAIN", "Initialisierung erfolgreich");
-}
-
-*/
