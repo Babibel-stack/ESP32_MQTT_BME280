@@ -1,10 +1,22 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+
 // ========== WLAN Konfiguration ==========
-#define WIFI_SSID "TP-Link_2640"          // DEINE WLAN SSID
-#define WIFI_PASSWORD "46813374"          // DEIN WLAN Passwort
+//#define WIFI_SSID "TP-Link_2640"          // DEINE WLAN SSID
+//#define WIFI_PASSWORD "46813374"          // DEIN WLAN Passwort
+//#define WIFI_TIMEOUT_MS 20000             // 20 Sekunden Timeout
+
+
+ 
+// ========== Hotspot Konfiguration ==========
+#define WIFI_SSID "iPhone"          // DEINE WLAN SSID
+#define WIFI_PASSWORD "egdM-frqL-6yyL-Xqww"          // DEIN WLAN Passwort
 #define WIFI_TIMEOUT_MS 20000             // 20 Sekunden Timeout
+
+
+
+
 
 // ========== NTP Konfiguration ==========
 #define NTP_SERVER "pool.ntp.org"         // NTP Server

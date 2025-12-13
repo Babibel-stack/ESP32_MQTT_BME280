@@ -143,6 +143,10 @@ void WifiManager::handleReconnect() {
             
             if (connect()) {
                 Serial.println("✅ Reconnect erfolgreich!");
+                // NTP neu initialisieren nach Reconnect
+                if (!ntpInitialized) {
+                    initNTP();
+                }
             } else {
                 Serial.println("❌ Reconnect fehlgeschlagen, versuche später erneut...");
             }

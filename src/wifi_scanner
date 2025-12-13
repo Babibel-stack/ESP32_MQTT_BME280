@@ -1,0 +1,65 @@
+
+
+// WiFi SSID Scanner - Finde den exakten Hotspot-Namen
+// Temporär in main.cpp einfügen zum Testen
+
+#include <Arduino.h>
+#include <WiFi.h>
+
+void setup() {
+    Serial.begin(115200);
+    delay(2000);
+    
+    Serial.println("\n╔═══════════════════════════════════════╗");
+    Serial.println("║   WiFi SSID Scanner                  ║");
+    Serial.println("╚═══════════════════════════════════════╝\n");
+    
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect();
+    delay(100);
+    
+    Serial.println("Scanne verfügbare WLANs...\n");
+    
+    int n = WiFi.scanNetworks();
+    
+    if (n == 0) {
+        Serial.println("❌ Keine Netzwerke gefunden!");
+    } else {
+        Serial.printf("✅ %d Netzwerke gefunden:\n\n", n);
+        
+        for (int i = 0; i < n; i++) {
+            Serial.printf("%2d: ", i + 1);
+            Serial.print(WiFi.SSID(i));
+            Serial.print(" (");
+            Serial.print(WiFi.RSSI(i));
+            Serial.print(" dBm) ");
+            Serial.print((WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? "offen" : "verschlüsselt");
+            
+            // Markiere iPhone Hotspots
+            if (WiFi.SSID(i).indexOf("iPhone") >= 0 || 
+                WiFi.SSID(i).indexOf("iphone") >= 0) {
+                Serial.print(" ← DEIN HOTSPOT?");
+            }
+            
+            Serial.println();
+        }
+        
+        Serial.println("\n╔═══════════════════════════════════════╗");
+        Serial.println("║ Kopiere den EXAKTEN SSID Namen       ║");
+        Serial.println("║ in deine config.h!                   ║");
+        Serial.println("╚═══════════════════════════════════════╝");
+    }
+}
+
+void loop() {
+    delay(1000);
+}
+
+// ANLEITUNG:
+// 1. Aktiviere iPhone Hotspot
+// 2. Upload diesen Code
+// 3. Öffne Serial Monitor
+// 4. Kopiere den exakten SSID-Namen
+// 5. Trage ihn in config.h ein
+// 6. Upload dein normales Programm wieder
+

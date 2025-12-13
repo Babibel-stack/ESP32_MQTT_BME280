@@ -155,3 +155,24 @@ void loop() {
     // Kleine Pause
     delay(10);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
