@@ -1,11 +1,15 @@
 #include <Arduino.h>
-#include <WiFi.h>        // ← HINZUFÜGEN!
+#include <WiFi.h>
 #include "config.h"
 #include "sensors.h"
 #include "wifi_setup.h"
+#include "mqtt.h"
+#include "sas.h"
+
 // Globale Objekte
 Sensors sensors;
 WifiManager wifiManager;
+MQTTClient mqttClient;     // ← DIESE ZEILE HINZUFÜGEN!
 SensorData data;
 
 // Timing
@@ -19,8 +23,8 @@ void setup() {
     Serial.println("\n\n");
     Serial.println("╔═══════════════════════════════════════════════════════╗");
     Serial.println("║                                                       ║");
-    Serial.println("║       ESP32 IoT Wetterstation - Tag 2                ║");
-    Serial.println("║       WLAN + NTP Zeitsynchronisation                 ║");
+    Serial.println("║       ESP32 IoT Wetterstation - Tag 3                ║");
+    Serial.println("║       Azure IoT Hub + MQTT                           ║");
     Serial.println("║                                                       ║");
     Serial.println("╚═══════════════════════════════════════════════════════╝");
     Serial.println();
@@ -46,7 +50,6 @@ void setup() {
     // WLAN initialisieren
     if (!wifiManager.begin()) {
         Serial.println("\n❌ FEHLER: WLAN-Verbindung fehlgeschlagen!");
-        Serial.println("   Prüfe config.h (SSID/Passwort)");
         Serial.println("   Programm läuft trotzdem weiter (Offline-Modus)");
     } else {
         // LED blinken zur Bestätigung
@@ -56,8 +59,28 @@ void setup() {
             digitalWrite(LED_PIN, LOW);
             delay(200);
         }
+        
+        // MQTT Client initialisieren
+        delay(2000);  // Warte auf stabile NTP Zeit
+        if (mqttClient.begin(wifiManager.getEpochTime())) {
+            Serial.println("✅ MQTT Client bereit!");
+        } else {
+            Serial.println("⚠️  MQTT Verbindung fehlgeschlagen (wird später versucht)");
+        }
     }
-    
+
+
+
+
+        // LED Test
+    Serial.println("\n=== LED Test ===");
+    digitalWrite(LED_PIN, HIGH);
+    Serial.println("LED sollte jetzt AN sein (3 Sekunden)...");
+    delay(3000);
+    digitalWrite(LED_PIN, LOW);
+    Serial.println("LED sollte jetzt AUS sein");
+    Serial.println("================\n");
+        
     Serial.println("\n✅ Setup abgeschlossen!");
     Serial.println("   Starte Hauptschleife...\n");
     
@@ -69,6 +92,12 @@ void loop() {
     
     // WLAN Reconnect Logik
     wifiManager.handleReconnect();
+    
+    // MQTT Loop (wichtig!)
+    mqttClient.loop();
+    
+    // MQTT Reconnect falls nötig
+    mqttClient.handleReconnect(wifiManager.getEpochTime());
     
     // Zeit aktualisieren (alle 10 Sekunden)
     if (currentMillis - lastTimeUpdate >= 10000) {
@@ -97,6 +126,8 @@ void loop() {
             Serial.printf ("║ WLAN: %-10s | RSSI: %4d dBm                ║\n",
                           wifiManager.isConnected() ? "Verbunden" : "Getrennt",
                           WiFi.RSSI());
+            Serial.printf ("║ MQTT: %-10s | Azure IoT Hub                ║\n",
+                          mqttClient.isConnected() ? "Verbunden" : "Getrennt");
             Serial.println("╠════════════════════════════════════════════════════════╣");
             
             // BME280 Daten
@@ -144,6 +175,11 @@ void loop() {
             Serial.printf("  \"gyroZ\": %.2f\n", data.gyroZ);
             Serial.println("}\n");
             
+            // An Azure IoT Hub senden!
+            if (mqttClient.isConnected()) {
+                mqttClient.publishTelemetry(data, wifiManager.getEpochTime());
+            }
+            
         } else {
             Serial.println("⚠️  Fehler beim Auslesen der Sensoren");
         }
@@ -155,24 +191,3 @@ void loop() {
     // Kleine Pause
     delay(10);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
