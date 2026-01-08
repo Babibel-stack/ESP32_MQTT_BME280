@@ -2,10 +2,11 @@
 #include "config.h"
 #include <ArduinoJson.h>
 
-// Statische Instanz für Callback
+// Statische Instanz für Callback-Funktion (ermöglicht Zugriff aus statischer Methode)
 MQTTClient* MQTTClient::instance = nullptr;
 
-// Baltimore CyberTrust Root CA (für Azure IoT Hub)
+// Baltimore CyberTrust Root CA Zertifikat (für sichere TLS-Verbindung zu Azure IoT Hub)
+// Dieses Zertifikat wird von Azure IoT Hub verwendet
 const char* AZURE_ROOT_CA = \
 "-----BEGIN CERTIFICATE-----\n" \
 "MIIDdzCCAl+gAwIBAgIEAgAAuTANBgkqhkiG9w0BAQUFADBaMQswCQYDVQQGEwJJ\n" \
@@ -29,48 +30,58 @@ const char* AZURE_ROOT_CA = \
 "R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp\n" \
 "-----END CERTIFICATE-----\n";
 
+// Konstruktor: Initialisiert alle Member-Variablen und setzt statische Instanz
 MQTTClient::MQTTClient() : mqttClient(wifiClient), connected(false), 
                            sasTokenExpiry(0), lastReconnectAttempt(0) {
-    instance = this;
+    instance = this;  // Für statischen Callback-Zugriff
 }
 
+// Initialisiert den MQTT-Client mit Zertifikat und Verbindungsparametern
 bool MQTTClient::begin(unsigned long currentEpoch) {
     Serial.println("\n=== MQTT Client Initialisierung ===");
     
-    // TLS Zertifikat setzen
-    wifiClient.setInsecure();  // Deaktiviert Zertifikatsprüfung (nur für Tests!)
+    // TLS-Konfiguration: setInsecure() deaktiviert Zertifikatsprüfung
+    // ACHTUNG: Nur für Entwicklung/Tests! In Produktion sollte setCACert() verwendet werden
+    wifiClient.setInsecure();
     
-    // MQTT Server konfigurieren
-    mqttClient.setServer(IOT_HUB_HOSTNAME, MQTT_PORT);
-    mqttClient.setCallback(messageCallback);
-    mqttClient.setBufferSize(512);  // Größerer Buffer für JSON
+    // MQTT Broker-Einstellungen konfigurieren
+    mqttClient.setServer(IOT_HUB_HOSTNAME, MQTT_PORT);  // Azure IoT Hub Hostname und Port (8883 für TLS)
+    mqttClient.setCallback(messageCallback);             // Callback für eingehende Messages
+    mqttClient.setBufferSize(512);                       // Buffer-Größe für größere JSON-Payloads erhöhen
     
+    // Debug-Ausgabe der Verbindungsparameter
     Serial.printf("IoT Hub: %s\n", IOT_HUB_HOSTNAME);
     Serial.printf("Device ID: %s\n", DEVICE_ID);
     
-    // Verbinden
+    // Verbindungsaufbau starten
     return connect(currentEpoch);
 }
 
+// Stellt MQTT-Verbindung zu Azure IoT Hub her mit SAS-Token-Authentifizierung
 bool MQTTClient::connect(unsigned long currentEpoch) {
+    // Prüfung ob gültige Zeit verfügbar ist (notwendig für SAS-Token)
     if (currentEpoch == 0) {
         Serial.println("❌ Keine gültige Zeit für SAS-Token!");
         return false;
     }
     
-    // SAS-Token generieren
+    // SAS-Token (Shared Access Signature) für Authentifizierung generieren
     Serial.print("Generiere SAS-Token... ");
     currentSasToken = sasToken.generateDefault(IOT_HUB_HOSTNAME, DEVICE_ID, DEVICE_KEY, currentEpoch);
-    sasTokenExpiry = currentEpoch + 86400;  // +24 Stunden
+    sasTokenExpiry = currentEpoch + 86400;  // Token gültig für 24 Stunden
     Serial.println("OK");
     
-    // MQTT Username (für Azure IoT Hub)
+    // MQTT Username nach Azure IoT Hub Schema aufbauen
+    // Format: {iothubhostname}/{device_id}/?api-version=2021-04-12
     String mqttUsername = String(IOT_HUB_HOSTNAME) + "/" + String(DEVICE_ID) + 
                          "/?api-version=2021-04-12";
     
     Serial.print("Verbinde mit Azure IoT Hub... ");
     
-    // MQTT Connect
+    // MQTT Verbindungsversuch mit:
+    // - Client ID: Device ID
+    // - Username: IoT Hub spezifischer Username
+    // - Password: SAS-Token
     bool result = mqttClient.connect(DEVICE_ID, 
                                      mqttUsername.c_str(), 
                                      currentSasToken.c_str());
@@ -79,62 +90,75 @@ bool MQTTClient::connect(unsigned long currentEpoch) {
         Serial.println("✅ Verbunden!");
         connected = true;
         
-        // Cloud-to-Device Messages abonnieren
+        // Cloud-to-Device Messages Topic abonnieren (für Befehle von der Cloud)
+        // Wildcard '#' für alle Sub-Topics
         String c2dTopic = String("devices/") + DEVICE_ID + "/messages/devicebound/#";
         mqttClient.subscribe(c2dTopic.c_str());
         Serial.printf("Abonniert: %s\n", c2dTopic.c_str());
         
         return true;
     } else {
+        // Verbindung fehlgeschlagen - State-Code gibt Hinweis auf Fehlerursache
         Serial.printf("❌ Fehler! State: %d\n", mqttClient.state());
         connected = false;
         return false;
     }
 }
 
+// Gibt aktuellen MQTT-Verbindungsstatus zurück
 bool MQTTClient::isConnected() {
     return mqttClient.connected();
 }
 
+// Trennt MQTT-Verbindung
 void MQTTClient::disconnect() {
     mqttClient.disconnect();
     connected = false;
 }
 
+// Sendet Sensordaten als JSON-Telemetrie an Azure IoT Hub
 bool MQTTClient::publishTelemetry(const SensorData& data, unsigned long currentEpoch) {
     if (!isConnected()) {
         return false;
     }
     
-    // JSON erstellen
-    StaticJsonDocument<256> doc;
+    // JSON-Dokument mit Sensordaten erstellen
+    StaticJsonDocument<256> doc;  // Statischer Speicher für JSON (256 Bytes)
     
-    doc["timestamp"] = currentEpoch;
-    doc["temperature"] = data.temperature;
-    doc["humidity"] = data.humidity;
-    doc["pressure"] = data.pressure;
-    doc["accelX"] = data.accelX;
-    doc["accelY"] = data.accelY;
-    doc["accelZ"] = data.accelZ;
-    doc["gyroX"] = data.gyroX;
-    doc["gyroY"] = data.gyroY;
-    doc["gyroZ"] = data.gyroZ;
+    // Alle Sensorwerte in JSON-Struktur einfügen
+    doc["timestamp"] = currentEpoch;          // Unix-Timestamp
+    doc["temperature"] = data.temperature;    // Temperatur in °C
+    doc["humidity"] = data.humidity;          // Luftfeuchtigkeit in %
+    doc["pressure"] = data.pressure;          // Luftdruck in hPa
+    doc["accelX"] = data.accelX;              // Beschleunigung X-Achse
+    doc["accelY"] = data.accelY;              // Beschleunigung Y-Achse
+    doc["accelZ"] = data.accelZ;              // Beschleunigung Z-Achse
+    doc["gyroX"] = data.gyroX;                // Gyroskop X-Achse
+    doc["gyroY"] = data.gyroY;                // Gyroskop Y-Achse
+    doc["gyroZ"] = data.gyroZ;                // Gyroskop Z-Achse
     
+    // JSON in String serialisieren
     char jsonBuffer[256];
     serializeJson(doc, jsonBuffer);
     
+    // JSON über MQTT senden
     return publishJSON(jsonBuffer);
 }
 
+// Sendet JSON-String als MQTT-Message an Azure IoT Hub
 bool MQTTClient::publishJSON(const char* json) {
     if (!isConnected()) {
         return false;
     }
     
+    // Azure IoT Hub Device-to-Cloud Message Topic
+    // Format: devices/{device_id}/messages/events/
     String topic = String("devices/") + DEVICE_ID + "/messages/events/";
     
+    // MQTT Publish durchführen
     bool result = mqttClient.publish(topic.c_str(), json);
     
+    // Statusmeldung ausgeben
     if (result) {
         Serial.println("📤 Telemetrie gesendet!");
     } else {
@@ -144,22 +168,28 @@ bool MQTTClient::publishJSON(const char* json) {
     return result;
 }
 
+// MQTT Loop-Funktion - muss regelmäßig aufgerufen werden
+// Verarbeitet eingehende Messages und hält Verbindung aufrecht
 void MQTTClient::loop() {
     mqttClient.loop();
 }
 
+// Überwacht Verbindung und stellt sie bei Bedarf wieder her
 void MQTTClient::handleReconnect(unsigned long currentEpoch) {
+    // Nur reconnecten wenn Verbindung getrennt
     if (isConnected()) {
         return;
     }
     
     unsigned long now = millis();
     
+    // Reconnect nur alle RECONNECT_INTERVAL Millisekunden versuchen
     if (now - lastReconnectAttempt >= RECONNECT_INTERVAL) {
         lastReconnectAttempt = now;
         
         Serial.println("⚠️  MQTT Verbindung verloren - Reconnect...");
         
+        // Neuen Verbindungsversuch mit aktuellem Epoch (für neues SAS-Token)
         if (connect(currentEpoch)) {
             Serial.println("✅ MQTT Reconnect erfolgreich!");
         } else {
@@ -168,14 +198,18 @@ void MQTTClient::handleReconnect(unsigned long currentEpoch) {
     }
 }
 
-// Callback für eingehende Messages
+// Statische Callback-Funktion für eingehende MQTT-Messages
+// Wird von PubSubClient-Bibliothek aufgerufen
 void MQTTClient::messageCallback(char* topic, byte* payload, unsigned int length) {
     if (instance) {
+        // Weiterleitung an Instanzmethode
         instance->handleIncomingMessage(topic, payload, length);
     }
 }
 
+// Verarbeitet eingehende Cloud-to-Device Messages
 void MQTTClient::handleIncomingMessage(char* topic, byte* payload, unsigned int length) {
+    // Formatierte Header-Ausgabe
     Serial.println("\n╔═══════════════════════════════════════╗");
     Serial.println("║ 📥 CLOUD-TO-DEVICE MESSAGE           ║");
     Serial.println("╚═══════════════════════════════════════╝");
@@ -183,15 +217,17 @@ void MQTTClient::handleIncomingMessage(char* topic, byte* payload, unsigned int 
     Serial.printf("Length: %d bytes\n", length);
     Serial.print("Payload: ");
     
+    // Payload als String ausgeben
     for (unsigned int i = 0; i < length; i++) {
         Serial.print((char)payload[i]);
     }
     Serial.println("\n");
     
-    // JSON parsen
+    // JSON-Payload parsen
     StaticJsonDocument<128> doc;
     DeserializationError error = deserializeJson(doc, payload, length);
     
+    // Fehlerbehandlung beim Parsen
     if (error) {
         Serial.printf("❌ JSON Parse Fehler: %s\n", error.c_str());
         return;
@@ -199,15 +235,19 @@ void MQTTClient::handleIncomingMessage(char* topic, byte* payload, unsigned int 
     
     Serial.println("✅ JSON erfolgreich geparst");
     
+    // LED-Steuerungsbefehl verarbeiten
     if (doc.containsKey("led")) {
         String ledState = doc["led"].as<String>();
         Serial.printf("LED Command: %s\n", ledState.c_str());
         
+        // LED einschalten
         if (ledState == "on") {
             digitalWrite(LED_PIN, HIGH);
             Serial.println("💡💡💡 LED EINGESCHALTET 💡💡💡");
             Serial.println("(GPIO2 = HIGH)");
-        } else if (ledState == "off") {
+        } 
+        // LED ausschalten
+        else if (ledState == "off") {
             digitalWrite(LED_PIN, LOW);
             Serial.println("⚫⚫⚫ LED AUSGESCHALTET ⚫⚫⚫");
             Serial.println("(GPIO2 = LOW)");

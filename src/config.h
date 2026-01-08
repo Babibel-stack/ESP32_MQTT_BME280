@@ -2,9 +2,14 @@
 #define CONFIG_H
 
 // ========== WLAN Konfiguration ==========
-#define WIFI_SSID "TP-Link_2640"          // DEINE WLAN SSID
-#define WIFI_PASSWORD "46813374"          // DEIN WLAN Passwort
+//#define WIFI_SSID "TP-Link_2640"          // DEINE WLAN SSID
+//#define WIFI_PASSWORD "46813374"          // DEIN WLAN Passwort
 #define WIFI_TIMEOUT_MS 20000             // 20 Sekunden Timeout
+
+
+// ========== persönlicher Hotspot Konfiguration ==========
+#define WIFI_SSID "iPhone"          // DEINE Hotspot SSID
+#define WIFI_PASSWORD "egdM-frqL-6yyL-Xqww"          // DEIN  Hotspot Passwort
 
 // ========== NTP Konfiguration ==========
 #define NTP_SERVER "pool.ntp.org"         // NTP Server
@@ -12,9 +17,9 @@
 #define NTP_UPDATE_INTERVAL_MS 60000      // Alle 60 Sekunden aktualisieren
 
 // ========== Azure IoT Hub ==========
-#define IOT_HUB_HOSTNAME "iotHubIvan.azure-devices.net"  // ← Dein IoT Hub Name!
-#define DEVICE_ID "esp32-wetterstation"
-#define DEVICE_KEY "h98bCawWT2glV6PoO9jbHZsmDlvcwHbIu72Wv4r7xN4="  // ← Füge deinen Primary Key ein!
+#define IOT_HUB_HOSTNAME "iotHubIvanFoka.azure-devices.net"  // ← Dein IoT Hub Name!
+#define DEVICE_ID "iotWeatherstationesp32"
+#define DEVICE_KEY "VCykuAaTiZdmGcRh+HTZXGCjbuy6TWUDSkWZFCzpdDY="  // ← Füge deinen Primary Key ein!
 
 // MQTT Topics
 #define MQTT_TELEMETRY_TOPIC "devices/" DEVICE_ID "/messages/events/"
