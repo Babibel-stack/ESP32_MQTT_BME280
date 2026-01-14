@@ -199,3 +199,15 @@ GROUP BY
         WHEN Temperature > 25 THEN 'Warm'
     END
 ORDER BY Kategorie
+
+
+
+
+
+-- Prüfe in deiner Azure SQL DB
+SELECT 
+    COUNT(*) as total_records,
+    MIN(Timestamp) as first_reading,
+    MAX(Timestamp) as last_reading,
+    DATEDIFF(day, MIN(Timestamp), MAX(Timestamp)) as days_of_data
+FROM dbo.TelemetryData;
