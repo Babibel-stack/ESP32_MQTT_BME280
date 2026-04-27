@@ -4,7 +4,7 @@
 #include "sensors.h"
 #include "wifi_setup.h"
 #include "mqtt.h"
-#include "sas.h"
+#include "sas.h"  //SAS Authentifizierung (Schicht 3: SAS)
 
 // ===== Globale Objekte =====
 // Diese Objekte werden im gesamten Programm verwendet
@@ -25,6 +25,8 @@ void setup() {
     Serial.begin(115200);
     delay(2000);  // Warten damit Serial Monitor bereit ist
     
+            
+
     // ===== Willkommens-Banner =====
     Serial.println("\n\n");
     Serial.println("╔═══════════════════════════════════════════════════════╗");
@@ -38,7 +40,12 @@ void setup() {
     // ===== LED-Pin konfigurieren =====
     // GPIO2 (eingebaute LED auf vielen ESP32 Boards)
     pinMode(LED_PIN, OUTPUT);
-    digitalWrite(LED_PIN, LOW);  // LED initial ausschalten
+    //digitalWrite(LED_PIN, LOW);  // LED initial ausschalten
+
+
+    digitalWrite(LED_PIN, HIGH);
+                delay(2000);
+                digitalWrite(LED_PIN, LOW);
     
     // ===== System-Informationen ausgeben =====
     Serial.println("System Informationen:");

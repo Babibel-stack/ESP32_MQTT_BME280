@@ -17,8 +17,19 @@
 
 // ========== Azure IoT Hub ==========
 #define IOT_HUB_HOSTNAME "iotHubIvanFoka.azure-devices.net"
+
+// SAS Authentifizierung (Schicht 3: SAS)
+//#define DEVICE_ID "iotWeatherstationesp32"
+//#define DEVICE_KEY "C0sEoGv1dulFw5NlIMY+Dzlt6/VeHFvLdoAS5+kIQRk="
+
+
+
+// SAS Authentifizierung (Schicht 3: SAS) — Test mit falschem Key
 #define DEVICE_ID "iotWeatherstationesp32"
-#define DEVICE_KEY "VCykuAaTiZdmGcRh+HTZXGCjbuy6TWUDSkWZFCzpdDY="
+#define DEVICE_KEY "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
+// X.509 Authentifizierung (Schicht 3: X.509)
+//#define DEVICE_ID "iotWeatherstationesp32-x509"
 
 // MQTT Topics
 #define MQTT_TELEMETRY_TOPIC "devices/" DEVICE_ID "/messages/events/"
@@ -30,8 +41,9 @@
 //#define RECONNECT_INTERVAL 5000       // Reconnect alle 5 Sekunden
 
 // ========== Sensor Konfiguration ==========
-#define SENSOR_READ_INTERVAL_MS 5000
+//#define SENSOR_READ_INTERVAL_MS 30000 // für X.509 Authentifizierung alle 30 Sekunden (wegen höherem Overhead)
 
+#define SENSOR_READ_INTERVAL_MS 5000 // für SAS Authentifizierung alle 5 Sekunden
 // ========== LED Pin ==========
 #define LED_PIN 23
 

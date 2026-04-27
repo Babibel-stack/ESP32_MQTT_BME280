@@ -5,19 +5,22 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include "sensors.h"
-#include "sas.h"
+#include "sas.h"    //SAS Authentifizierung (Schicht 3: SAS)
 
 class MQTTClient {
 private:
     WiFiClientSecure wifiClient;
     PubSubClient mqttClient;
-    SASToken sasToken;
+    SASToken sasToken;  // SAS Authentifizierung
     
     String currentSasToken;
     unsigned long sasTokenExpiry;
     unsigned long lastReconnectAttempt;
     
-    const unsigned long RECONNECT_INTERVAL = 5000;  // 5 Sekunden
+
+    const unsigned long RECONNECT_INTERVAL = 120000; // 2 Minuten  
+
+    //const unsigned long RECONNECT_INTERVAL = 5000;  // 5 Sekunden  für SAS 
     const int MQTT_PORT = 8883;  // Azure IoT Hub MQTT Port (TLS)
     
     bool connected;
